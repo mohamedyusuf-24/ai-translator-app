@@ -13,7 +13,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 from reportlab.lib.pagesizes import A4
 
-# -------- LANGUAGES --------
+# ---------------- LANGUAGES ----------------
+
 LANGUAGES = {
     "English": "en",
     "Tamil": "ta",
@@ -27,7 +28,8 @@ LANGUAGES = {
     "Korean": "ko"
 }
 
-# -------- FONT MAPPING --------
+# ---------------- FONT MAPPING ----------------
+
 FONT_MAPPING = {
     "ta": "NotoSansTamil-Regular.ttf",
     "ar": "NotoSansArabic-Regular.ttf",
@@ -35,32 +37,37 @@ FONT_MAPPING = {
     "default": "NotoSans-Regular.ttf"
 }
 
-# -------- UTILITIES --------
+# ---------------- UTILITIES ----------------
 
 def fix_rendering(text, lang_code):
     """Fix Arabic RTL rendering."""
     if not text:
         return ""
+
     if lang_code == "ar":
         reshaped = arabic_reshaper.reshape(text)
         return get_display(reshaped)
+
     return text
 
 
 def get_ocr_langs(target_code):
     """Better OCR detection."""
     base = "eng"
+
     if target_code == "ta":
         base += "+tam"
     elif target_code == "ar":
         base += "+ara"
     elif target_code == "hi":
         base += "+hin"
+
     return base
 
 
 def draw_text_on_image(img, text, font_path):
-    """Overlay translated text onto image."""
+    """Draw translated text above the image."""
+
     draw_img = img.convert("RGB")
 
     try:
@@ -84,12 +91,12 @@ def draw_text_on_image(img, text, font_path):
     return final_img
 
 
-# -------- STREAMLIT UI --------
+# ---------------- STREAMLIT UI ----------------
 
 st.set_page_config(page_title="AI Translator App", layout="wide")
 
 st.title("🌍 AI Image & PDF Translator")
-st.write("Upload an **image or PDF** and translate the text into another language.")
+st.write("Upload an **Image or PDF** and translate the detected text.")
 
 target_lang_name = st.selectbox(
     "Select Target Language",
@@ -98,7 +105,7 @@ target_lang_name = st.selectbox(
 
 target_code = LANGUAGES[target_lang_name]
 
-# -------- FONT SETUP --------
+# ---------------- FONT SETUP ----------------
 
 active_font_path = FONT_MAPPING.get(target_code, FONT_MAPPING["default"])
 
@@ -111,8 +118,7 @@ if os.path.exists(active_font_path):
     except:
         pass
 
-
-# -------- FILE UPLOAD --------
+# ---------------- FILE UPLOAD ----------------
 
 uploaded_file = st.file_uploader(
     "Upload Image or PDF",
@@ -123,14 +129,23 @@ if uploaded_file:
 
     with st.spinner("Processing..."):
 
-        # LOAD FILE
+        # -------- LOAD FILE --------
+
         if "image" in uploaded_file.type:
             input_images = [Image.open(uploaded_file)]
 
-        else:
-            input_images = convert_from_bytes(uploaded_file.read())
+        elif "pdf" in uploaded_file.type:
+            try:
+                input_images = convert_from_bytes(
+                    uploaded_file.read(),
+                    fmt="png"
+                )
+            except:
+                st.error("❌ PDF processing failed. Please upload an image instead.")
+                st.stop()
 
-        # PDF OUTPUT SETUP
+        # -------- PDF OUTPUT SETUP --------
+
         pdf_io = io.BytesIO()
 
         doc = SimpleDocTemplate(pdf_io, pagesize=A4)
@@ -148,28 +163,25 @@ if uploaded_file:
             style.alignment = 2
 
         story = []
+
         translated_images = []
 
-        # -------- PROCESS EACH PAGE --------
+        # -------- PROCESS PAGES --------
 
         for i, img in enumerate(input_images):
 
-            # OCR
             raw_text = pytesseract.image_to_string(
                 img,
                 lang=get_ocr_langs(target_code)
             )
 
-            # TRANSLATE
             translated_text = GoogleTranslator(
                 source="auto",
                 target=target_code
             ).translate(raw_text)
 
-            # FIX SCRIPT
             display_text = fix_rendering(translated_text, target_code)
 
-            # IMAGE OUTPUT
             result_img = draw_text_on_image(
                 img,
                 display_text,
@@ -178,7 +190,6 @@ if uploaded_file:
 
             translated_images.append(result_img)
 
-            # PDF OUTPUT
             clean_text = html.escape(display_text).replace("\n", "<br/>")
 
             story.append(Paragraph(f"<b>Page {i+1}</b>", style))
@@ -186,13 +197,12 @@ if uploaded_file:
             story.append(Paragraph(clean_text, style))
             story.append(Spacer(1, 30))
 
-        # SHOW PREVIEW
-        st.image(
-            translated_images[0],
-            caption="Translated Preview"
-        )
+        # -------- SHOW PREVIEW --------
 
-        # BUILD PDF
+        st.image(translated_images[0], caption="Translated Preview")
+
+        # -------- BUILD PDF --------
+
         doc.build(story)
 
         st.download_button(
