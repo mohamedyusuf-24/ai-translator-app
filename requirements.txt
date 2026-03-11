@@ -6,3 +6,4 @@ reportlab
 arabic-reshaper
 python-bidi
 deep-translator
+poppler-utils
